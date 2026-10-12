@@ -64,6 +64,9 @@ async function runSync(env) {
         sample_receipts: receipts.slice(0, 5).map(r => ({
           receipt_number: r.receipt_number || null,
           api_has_id: Boolean(r.id),
+          proposed_receipt_key: makeReceiptKey(r),
+          proposed_line_item_keys: (Array.isArray(r.line_items) ? r.line_items : []).slice(0, 2).map((item, index) => makeLineItemKey(item, makeReceiptKey(r), index)),
+          proposed_payment_keys: (Array.isArray(r.payments) ? r.payments : []).slice(0, 2).map((payment, index) => makePaymentKey(payment, makeReceiptKey(r), index)),
           line_items: Array.isArray(r.line_items) ? r.line_items.length : 0,
           payments: Array.isArray(r.payments) ? r.payments.length : 0
         })),
@@ -73,9 +76,9 @@ async function runSync(env) {
     }
 
     for (const receipt of receipts) {
-      const receiptKey = String(receipt.id || receipt.receipt_number || "");
+      const receiptKey = makeReceiptKey(receipt);
       if (!receiptKey) {
-        throw new Error("Loyverse returned a receipt without id or receipt_number.");
+        throw new Error("Loyverse receipt is missing store_id, receipt_number, or created_at; stopped to avoid creating incompatible keys.");
       }
 
       const receiptRow = mapReceipt(receipt, receiptKey);
@@ -166,6 +169,23 @@ async function fetchReceipts(token, updatedAtMin) {
   throw new Error(`Loyverse pagination exceeded ${MAX_PAGES} pages; stopped to avoid a partial sync.`);
 }
 
+function makeReceiptKey(r) {
+  // Matches the historical Supabase key format: store_id|receipt_number|created_at.
+  if (!r?.store_id || !r?.receipt_number || !r?.created_at) return null;
+  return [r.store_id, r.receipt_number, r.created_at].map(String).join("|");
+}
+
+function makeLineItemKey(item, receiptKey, index) {
+  if (!receiptKey) return null;
+  const itemId = item?.id || item?.line_item_id;
+  return itemId ? `${receiptKey}|${itemId}` : `${receiptKey}|LINE_ITEM|${index}`;
+}
+
+function makePaymentKey(payment, receiptKey, index) {
+  if (!receiptKey) return null;
+  return `${receiptKey}|PAYMENT|${index}`;
+}
+
 function mapReceipt(r, receiptKey) {
   return {
     loyverse_receipt_id: receiptKey,
@@ -190,7 +210,7 @@ function mapReceipt(r, receiptKey) {
 }
 
 function mapLineItem(item, receipt, receiptKey, index) {
-  const lineKey = String(item.id || item.line_item_id || `${receiptKey}:${index}`);
+  const lineKey = makeLineItemKey(item, receiptKey, index);
   return {
     loyverse_line_item_key: lineKey,
     loyverse_receipt_id: receiptKey,
@@ -212,15 +232,18 @@ function mapLineItem(item, receipt, receiptKey, index) {
 }
 
 function mapPayment(payment, receipt, receiptKey, index) {
-  const paymentKey = String(payment.id || payment.payment_id ||
-    `${receiptKey}:${payment.payment_type_id || payment.payment_type_name || "payment"}:${index}`);
+  const paymentKey = makePaymentKey(payment, receiptKey, index);
   return {
     loyverse_payment_key: paymentKey,
     loyverse_receipt_id: receiptKey,
     payment_type_id: payment.payment_type_id || null,
     payment_type_name: payment.payment_type_name || payment.name || null,
     money_amount: num(payment.money_amount ?? payment.amount),
-    raw_json: payment
+    raw_json: {
+      paid_at: payment.paid_at || null,
+      source_raw: payment,
+      payment_details: payment.payment_details || {}
+    }
   };
 }
 
