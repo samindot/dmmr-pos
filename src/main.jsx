@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, CalendarDays, ChartNoAxesCombined, CircleDollarSign, Database, LogOut, ReceiptText, LockKeyhole, RefreshCw } from "lucide-react";
+import { Activity, CalendarDays, ChartNoAxesCombined, CircleDollarSign, Database, LogOut, ReceiptText, RefreshCw, Wallet, Package } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from "recharts";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import "./styles.css";
@@ -26,6 +26,7 @@ function App() {
   const [dataError, setDataError] = React.useState("");
   const [receipts, setReceipts] = React.useState([]);
   const [items, setItems] = React.useState([]);
+  const [payments, setPayments] = React.useState([]);
 
   React.useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
@@ -35,7 +36,7 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    if (!session || !supabase) { setReceipts([]); setItems([]); return; }
+    if (!session || !supabase) { setReceipts([]); setItems([]); setPayments([]); return; }
     let cancelled = false;
     async function loadData() {
       setLoading(true); setDataError("");
@@ -48,14 +49,20 @@ function App() {
       if (receiptError) { if (!cancelled) { setDataError(receiptError.message); setLoading(false); } return; }
       const ids = (receiptRows || []).map(r => r.loyverse_receipt_id);
       let itemRows = [];
+      let paymentRows = [];
       if (ids.length) {
         const { data, error } = await supabase.from("sales_items")
           .select("loyverse_receipt_id, item_name, variant_name, quantity, total_money")
           .in("loyverse_receipt_id", ids).limit(1000);
         if (error) { if (!cancelled) { setDataError(error.message); setLoading(false); } return; }
         itemRows = data || [];
+        const { data: payData, error: payError } = await supabase.from("payments")
+          .select("loyverse_receipt_id, payment_type_name, money_amount, raw_json")
+          .in("loyverse_receipt_id", ids).limit(1000);
+        if (payError) { if (!cancelled) { setDataError(payError.message); setLoading(false); } return; }
+        paymentRows = payData || [];
       }
-      if (!cancelled) { setReceipts(receiptRows || []); setItems(itemRows); setLoading(false); }
+      if (!cancelled) { setReceipts(receiptRows || []); setItems(itemRows); setPayments(paymentRows); setLoading(false); }
     }
     loadData();
     return () => { cancelled = true; };
@@ -89,6 +96,23 @@ function App() {
   const topMap = {};
   items.forEach(i => { const name = i.item_name || "Produk tanpa nama"; topMap[name]=(topMap[name]||0)+Number(i.total_money||0); });
   const topItems = Object.entries(topMap).sort((a,b)=>b[1]-a[1]).slice(0,7).map(([name,total])=>({name,total}));
+  const validReceiptIds = new Set(validReceipts.map(r => r.loyverse_receipt_id));
+  const paymentMap = {};
+  payments.filter(p => validReceiptIds.has(p.loyverse_receipt_id)).forEach(p => {
+    const name = p.payment_type_name || p.raw_json?.source_raw?.name || "Metode tidak diketahui";
+    if (!paymentMap[name]) paymentMap[name] = { name, transactions: 0, total: 0 };
+    paymentMap[name].transactions += 1;
+    paymentMap[name].total += Number(p.money_amount || p.raw_json?.source_raw?.money_amount || 0);
+  });
+  const paymentReport = Object.values(paymentMap).sort((a,b) => b.total-a.total);
+  const itemMap = {};
+  items.filter(i => validReceiptIds.has(i.loyverse_receipt_id)).forEach(i => {
+    const name = [i.item_name || "Produk tanpa nama", i.variant_name].filter(Boolean).join(" · ");
+    if (!itemMap[name]) itemMap[name] = { name, quantity: 0, total: 0 };
+    itemMap[name].quantity += Number(i.quantity || 0);
+    itemMap[name].total += Number(i.total_money || 0);
+  });
+  const itemReport = Object.values(itemMap).sort((a,b) => b.quantity-a.quantity);
   const recent = [...receipts].slice(0,12);
 
   return <main className="app-shell">
@@ -112,6 +136,16 @@ function App() {
       </article>
       <article className="panel"><div className="panel-heading"><div><h2>Produk teratas</h2><p>Berdasarkan omzet</p></div></div>
         {topItems.length ? <div className="top-products"><ResponsiveContainer width="100%" height={190}><BarChart data={topItems} layout="vertical" margin={{left:0,right:12,top:4,bottom:4}}><XAxis type="number" hide/><YAxis type="category" dataKey="name" width={105} tick={{fontSize:10,fill:"#647169"}} axisLine={false} tickLine={false}/><Tooltip formatter={v=>money(v)}/><Bar dataKey="total" name="Omzet" fill="#557563" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div> : <div className="empty-list">Data produk akan muncul setelah impor selesai.</div>}
+      </article>
+    </section>
+    <section className="report-grid">
+      <article className="panel report-panel">
+        <div className="panel-heading"><div><h2>Laporan alat pembayaran</h2><p>Nominal dan jumlah pembayaran per metode · transaksi non-refund</p></div><span className="panel-icon"><Wallet size={18}/></span></div>
+        {paymentReport.length ? <div className="table-scroll"><table><thead><tr><th>Metode pembayaran</th><th className="align-right">Jumlah pembayaran</th><th className="align-right">Total nominal</th></tr></thead><tbody>{paymentReport.map(p=><tr key={p.name}><td>{p.name}</td><td className="align-right">{p.transactions.toLocaleString("id-ID")}</td><td className="align-right">{money(p.total)}</td></tr>)}</tbody><tfoot><tr><th>Total</th><th className="align-right">{paymentReport.reduce((s,p)=>s+p.transactions,0).toLocaleString("id-ID")}</th><th className="align-right">{money(paymentReport.reduce((s,p)=>s+p.total,0))}</th></tr></tfoot></table></div> : <div className="table-empty"><Wallet size={22}/><span>{loading?"Memuat laporan pembayaran…":"Belum ada data alat pembayaran pada periode ini."}</span></div>}
+      </article>
+      <article className="panel report-panel">
+        <div className="panel-heading"><div><h2>Laporan item terjual</h2><p>Diurutkan berdasarkan kuantitas · transaksi non-refund</p></div><span className="panel-icon"><Package size={18}/></span></div>
+        {itemReport.length ? <div className="table-scroll report-table-scroll"><table><thead><tr><th>Item</th><th className="align-right">Qty terjual</th><th className="align-right">Omzet</th></tr></thead><tbody>{itemReport.map(i=><tr key={i.name}><td>{i.name}</td><td className="align-right">{i.quantity.toLocaleString("id-ID",{maximumFractionDigits:3})}</td><td className="align-right">{money(i.total)}</td></tr>)}</tbody><tfoot><tr><th>Total</th><th className="align-right">{itemReport.reduce((s,i)=>s+i.quantity,0).toLocaleString("id-ID",{maximumFractionDigits:3})}</th><th className="align-right">{money(itemReport.reduce((s,i)=>s+i.total,0))}</th></tr></tfoot></table></div> : <div className="table-empty"><Package size={22}/><span>{loading?"Memuat laporan item…":"Belum ada item terjual pada periode ini."}</span></div>}
       </article>
     </section>
     <section className="panel transactions-panel"><div className="panel-heading"><div><h2>Transaksi terbaru</h2><p>Transaksi dalam periode pilihan (maksimal 12 ditampilkan)</p></div><button className="refresh-button" onClick={()=>setDateTo(todayString())}><RefreshCw size={14}/> Perbarui periode</button></div>
