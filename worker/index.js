@@ -54,6 +54,24 @@ async function runSync(env) {
     const receipts = await fetchReceipts(env.LOYVERSE_ACCESS_TOKEN, updatedAtMin);
     receiptsSeen = receipts.length;
 
+    // Safe by default: deploying the Worker does not write to Supabase until
+    // ENABLE_WRITES is explicitly set to "true" after key compatibility is checked.
+    if (env.ENABLE_WRITES !== "true") {
+      return {
+        status: "dry_run",
+        writes_enabled: false,
+        receipts_seen: receiptsSeen,
+        sample_receipts: receipts.slice(0, 5).map(r => ({
+          receipt_number: r.receipt_number || null,
+          api_has_id: Boolean(r.id),
+          line_items: Array.isArray(r.line_items) ? r.line_items.length : 0,
+          payments: Array.isArray(r.payments) ? r.payments.length : 0
+        })),
+        updated_at_min: updatedAtMin,
+        note: "No database writes performed. Set ENABLE_WRITES=true only after validating identifier compatibility."
+      };
+    }
+
     for (const receipt of receipts) {
       const receiptKey = String(receipt.id || receipt.receipt_number || "");
       if (!receiptKey) {
