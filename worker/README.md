@@ -14,6 +14,7 @@ Set these in Cloudflare Dashboard → Workers & Pages → `dmmr-pos-loyverse-syn
 - `SUPABASE_URL` — URL of the DMMR POS Supabase project.
 - `SUPABASE_SERVICE_ROLE_KEY` — service-role/secret key for the DMMR POS Supabase project only. Never put this in frontend variables, GitHub, or Cloudflare Pages.
 - `SYNC_TRIGGER_SECRET` — long random secret used to authorize a manual sync request.
+- `ENABLE_WRITES` — a Worker variable, not a secret. Keep it unset or set to `false` for the first test. Set to `true` only after checking identifier compatibility.
 
 Mark all four as secrets where the dashboard allows it.
 
@@ -38,6 +39,8 @@ Use either the Cloudflare Dashboard or Wrangler to set secrets; do not do both u
 
 ## Test
 
+**Safe by default:** unless `ENABLE_WRITES=true`, `/sync` only fetches recent receipts from Loyverse and returns counts plus a few non-sensitive identifier diagnostics. It does not write to Supabase. Check that the API can be reached and compare one or more receipt numbers with existing rows before enabling writes.
+
 Health check:
 
 ```sh
@@ -51,7 +54,7 @@ curl -X POST https://<worker-hostname>/sync \
   -H 'Authorization: Bearer <SYNC_TRIGGER_SECRET>'
 ```
 
-The manual route is authenticated. Do not share the secret or paste it into GitHub issues.
+The manual route is authenticated. Do not share the secret or paste it into GitHub issues. Once the dry-run diagnostics confirm the key strategy, set Worker variable `ENABLE_WRITES=true` and run a manual sync before relying on the hourly schedule.
 
 ## Sync behavior and limits
 
