@@ -158,7 +158,7 @@ function App() {
             ])}
             inputRanges={[]}
           />
-          <div className="date-range-footer"><span>Custom Range · pilih tanggal di kalender</span><button type="button" className="range-apply" onClick={()=>{setDateFrom(format(draftRange.startDate,"yyyy-MM-dd"));setDateTo(format(draftRange.endDate,"yyyy-MM-dd"));setDatePickerOpen(false);}}>Apply</button></div>
+          <div className="date-range-footer"><span>Custom Range · pilih tanggal di kalender</span><button type="button" className="range-apply" onClick={()=>{const from=format(draftRange.startDate,"yyyy-MM-dd");const to=format(draftRange.endDate,"yyyy-MM-dd");try{localStorage.setItem("dmmr-pos-report-range-v1",JSON.stringify({from,to}));}catch{}setDateFrom(from);setDateTo(to);setDatePickerOpen(false);}}>Apply</button></div>
         </div>}
       </div>
     </section>
