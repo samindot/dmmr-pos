@@ -22,6 +22,7 @@ function App() {
   const [authError, setAuthError] = React.useState("");
   const [dateTo, setDateTo] = React.useState(todayString());
   const [dateFrom, setDateFrom] = React.useState(shiftDate(todayString(), -29));
+  const [datePickerOpen, setDatePickerOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [dataError, setDataError] = React.useState("");
   const [receipts, setReceipts] = React.useState([]);
@@ -121,7 +122,24 @@ function App() {
       <div className="user-actions"><span className="connection"><span className="status-dot connected" /> Terhubung</span><span className="user-email">{session.user.email}</span><button className="icon-button" onClick={()=>supabase.auth.signOut()} aria-label="Keluar"><LogOut size={16}/><span>Keluar</span></button></div>
     </header>
     <section className="page-heading"><div><p className="eyebrow">LOYVERSE · BUSINESS INTELLIGENCE</p><h1>Sales overview</h1><p className="subheading">Pantau penjualan dan performa produk dalam rentang tanggal pilihanmu.</p></div>
-      <div className="date-filter"><label><CalendarDays size={15}/> Dari <input aria-label="Tanggal mulai" type="date" value={dateFrom} max={dateTo} onChange={e=>setDateFrom(e.target.value)}/></label><span className="date-separator">—</span><label>Sampai <input aria-label="Tanggal akhir" type="date" value={dateTo} min={dateFrom} max={todayString()} onChange={e=>setDateTo(e.target.value)}/></label></div>
+      <div className="date-range-control">
+        <button className={`date-range-trigger ${datePickerOpen ? "is-open" : ""}`} type="button" onClick={()=>setDatePickerOpen(v=>!v)} aria-expanded={datePickerOpen}>
+          <CalendarDays size={17}/><span><small>Periode laporan</small><strong>{new Date(dateFrom+"T12:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})} – {new Date(dateTo+"T12:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</strong></span><span className="range-chevron">▾</span>
+        </button>
+        {datePickerOpen && <div className="date-range-popover">
+          <div className="range-presets">
+            <button type="button" onClick={()=>{const t=todayString();setDateFrom(t);setDateTo(t);setDatePickerOpen(false);}}>Hari ini</button>
+            <button type="button" onClick={()=>{setDateFrom(shiftDate(todayString(),-6));setDateTo(todayString());setDatePickerOpen(false);}}>7 hari terakhir</button>
+            <button type="button" onClick={()=>{const t=todayString();setDateFrom(t.slice(0,8)+"01");setDateTo(t);setDatePickerOpen(false);}}>Bulan ini</button>
+            <button type="button" onClick={()=>{const d=new Date(todayString()+"T12:00:00");d.setDate(0);const end=[d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");const first=new Date(d.getFullYear(),d.getMonth(),1,12);const start=[first.getFullYear(),String(first.getMonth()+1).padStart(2,"0"),String(first.getDate()).padStart(2,"0")].join("-");setDateFrom(start);setDateTo(end);setDatePickerOpen(false);}}>Bulan lalu</button>
+          </div>
+          <div className="range-date-fields">
+            <label>Tanggal mulai<input aria-label="Tanggal mulai" type="date" value={dateFrom} max={dateTo} onChange={e=>setDateFrom(e.target.value)}/></label>
+            <label>Tanggal akhir<input aria-label="Tanggal akhir" type="date" value={dateTo} min={dateFrom} max={todayString()} onChange={e=>setDateTo(e.target.value)}/></label>
+          </div>
+          <button className="range-apply" type="button" onClick={()=>setDatePickerOpen(false)}>Terapkan periode</button>
+        </div>}
+      </div>
     </section>
     {dataError && <div className="data-alert"><strong>Gagal memuat data.</strong> {dataError} <span>Periksa kebijakan akses Supabase (RLS).</span></div>}
     <section className="metric-grid" aria-label="Ringkasan penjualan">
