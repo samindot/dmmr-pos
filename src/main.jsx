@@ -24,8 +24,14 @@ function App() {
   const [password, setPassword] = React.useState("");
   const [authBusy, setAuthBusy] = React.useState(false);
   const [authError, setAuthError] = React.useState("");
-  const [dateTo, setDateTo] = React.useState(todayString());
-  const [dateFrom, setDateFrom] = React.useState(shiftDate(todayString(), -29));
+  const [dateFrom, setDateFrom] = React.useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem("dmmr-pos-report-range-v1") || "null"); if (saved && saved.from && saved.to && saved.from <= saved.to) return saved.from; } catch {}
+    return shiftDate(todayString(), -29);
+  });
+  const [dateTo, setDateTo] = React.useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem("dmmr-pos-report-range-v1") || "null"); if (saved && saved.from && saved.to && saved.from <= saved.to) return saved.to; } catch {}
+    return todayString();
+  });
   const [datePickerOpen, setDatePickerOpen] = React.useState(false);
   const [draftRange, setDraftRange] = React.useState({ startDate: new Date(shiftDate(todayString(), -29) + "T12:00:00"), endDate: new Date(todayString() + "T12:00:00"), key: "selection" });
   const [loading, setLoading] = React.useState(false);
@@ -40,6 +46,10 @@ function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  React.useEffect(() => {
+    try { localStorage.setItem("dmmr-pos-report-range-v1", JSON.stringify({ from: dateFrom, to: dateTo })); } catch {}
+  }, [dateFrom, dateTo]);
 
   React.useEffect(() => {
     if (!session || !supabase) { setReceipts([]); setItems([]); setPayments([]); return; }
@@ -177,7 +187,7 @@ function App() {
         {itemReport.length ? <div className="table-scroll report-table-scroll"><table><thead><tr><th>Item</th><th className="align-right">Qty terjual</th><th className="align-right">Omzet</th></tr></thead><tbody>{itemReport.map(i=><tr key={i.name}><td>{i.name}</td><td className="align-right">{i.quantity.toLocaleString("id-ID",{maximumFractionDigits:3})}</td><td className="align-right">{money(i.total)}</td></tr>)}</tbody><tfoot><tr><th>Total</th><th className="align-right">{itemReport.reduce((s,i)=>s+i.quantity,0).toLocaleString("id-ID",{maximumFractionDigits:3})}</th><th className="align-right">{money(itemReport.reduce((s,i)=>s+i.total,0))}</th></tr></tfoot></table></div> : <div className="table-empty"><Package size={22}/><span>{loading?"Memuat laporan item…":"Belum ada item terjual pada periode ini."}</span></div>}
       </article>
     </section>
-    <section className="panel transactions-panel"><div className="panel-heading"><div><h2>Transaksi terbaru</h2><p>Transaksi dalam periode pilihan (maksimal 12 ditampilkan)</p></div><button className="refresh-button" onClick={()=>setDateTo(todayString())}><RefreshCw size={14}/> Perbarui periode</button></div>
+    <section className="panel transactions-panel"><div className="panel-heading"><div><h2>Transaksi terbaru</h2><p>Transaksi dalam periode pilihan (maksimal 12 ditampilkan)</p></div><button className="refresh-button" onClick={()=>{setLoading(true);window.location.reload();}}><RefreshCw size={14}/> Refresh data</button></div>
       {recent.length ? <div className="table-scroll"><table><thead><tr><th>Tanggal</th><th>No. struk</th><th>Kasir</th><th>Outlet</th><th className="align-right">Total</th></tr></thead><tbody>{recent.map((r,i)=><tr key={r.loyverse_receipt_id||i}><td>{r.receipt_date?new Date(r.receipt_date).toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—"}</td><td>{r.receipt_number||"—"}</td><td>{r.employee_name||"—"}</td><td>{r.store_name||"—"}</td><td className="align-right">{money(r.total_money)}</td></tr>)}</tbody></table></div> : <div className="table-empty"><ReceiptText size={22}/><span>{loading?"Memuat transaksi…":"Belum ada data transaksi yang dimuat."}</span></div>}
     </section>
     <footer>DMMR POS <span>·</span> Loyverse analytics <span>·</span> {loading?"Sinkronisasi tampilan…":"Data dibaca dari Supabase"}</footer>
