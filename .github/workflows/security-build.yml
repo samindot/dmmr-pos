@@ -1,0 +1,31 @@
+name: Security and build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit
+      - name: Audit dependency tree
+        run: npm audit --audit-level=high
+      - name: Build frontend
+        run: npm run build
